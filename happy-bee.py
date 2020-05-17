@@ -24,6 +24,19 @@ bee_img = pygame.transform.scale(pygame.image.load(os.path.join("images","bee.pn
 
 gen = 0
 
+def button_print(text, back_color, w, h, scale = 1):
+    font = pygame.font.SysFont("Avenir", int(scale * 70))
+    color = (175,175,175)
+    button_width = scale * len(text) * 50
+    button_height = scale * 100
+    dim = [w - 0.5 * button_width, h - 0.5 * button_height, button_width, button_height]
+    pygame.draw.rect(WINDOW, back_color, dim)
+
+    label = font.render(text, 1, color)
+    WINDOW.blit(label, (w - 0.32 * button_width, h - 0.2 * button_height))
+    pygame.display.update()
+    return dim
+
 def blitRotateCenter(surf, image, topleft, angle):
     """
     Rotate a surface and blit it to the window
@@ -38,7 +51,7 @@ def blitRotateCenter(surf, image, topleft, angle):
 
     surf.blit(rotated_image, new_rect.topleft)
 
-def draw_window(win, birds, ground, pipes, score):
+def draw_window(win, bees, ground, pipes, score):
     win.blit(sky_img, (0,0))
     for pipe in pipes:
         pipe.draw(win)
@@ -127,7 +140,7 @@ class Pipe():
     represents a pair of pipes
     """
     GAP = 200
-    VEL = 5
+    VEL = 6
 
     def __init__(self, x):
         """
@@ -200,49 +213,9 @@ class Pipe():
 
 class Ground:
     """
-    Represnts the moving floor of the game
-    """
-    VEL = 5
-    IMG = ground_img
-
-    def __init__(self, y):
-        """
-        Initialize the object
-        :param y: int
-        :return: None
-        """
-        self.y = y
-        self.x1 = 0
-        self.x2 = self.WIDTH
-
-    def move(self):
-        """
-        move floor so it looks like its scrolling
-        :return: None
-        """
-        self.x1 -= self.VEL
-        self.x2 -= self.VEL
-        if self.x1 + self.WIDTH < 0:
-            self.x1 = self.x2 + self.WIDTH
-
-        if self.x2 + self.WIDTH < 0:
-            self.x2 = self.x1 + self.WIDTH
-
-    def draw(self, win):
-        """
-        Draw the floor. This is two images that move together.
-        :param win: the pygame surface/window
-        :return: None
-        """
-        win.blit(self.IMG, (self.x1, self.y))
-        win.blit(self.IMG, (self.x2, self.y))
-
-
-class Ground:
-    """
     The ground of the game. Moves sideways
     """
-    VEL = 7
+    VEL = 6
 
     def __init__(self, y, img):
         """
@@ -277,55 +250,95 @@ class Ground:
         win.blit(self.img, (self.x1, self.y))
         win.blit(self.img, (self.x2, self.y))
 
-bees = [Bee(230,350, bee_img)]
-ground = Ground(700, ground_img)
-run = 1
-pipes = [Pipe(700)]
-clock = pygame.time.Clock()
-score = 0
-while(run):
-    
-    clock.tick(20)
-    ground.move()
-    for bee in bees:
-        bee.move()
+def run():
+    bees = [Bee(230,350, bee_img)]
+    ground = Ground(700, ground_img)
+    pipes = [Pipe(700)]
+    clock = pygame.time.Clock()
+    score = 0
+    while(1):
+        
+        clock.tick(20)
+        ground.move()
+        for bee in bees:
+            bee.move()
 
-        pipes_to_remove = []
-        add_pipe = False
-        for pipe in pipes:
-            pipe.move()
-            # check for collision
-            if pipe.collide(bees[0], WINDOW):
-                bees.pop(0)
+            pipes_to_remove = []
+            add_pipe = False
+            for pipe in pipes:
+                pipe.move()
+                # check for collision
+                if pipe.collide(bee, WINDOW):
+                    bees.pop(bees.index(bee))
+                    break
+
+
+                if pipe.x + pipe.UPPER_PIPE.get_width() < 0:
+                    pipes_to_remove.append(pipe)
+
+                if not pipe.passed and pipe.x < bee.x:
+                    pipe.passed = True
+                    add_pipe = True
+
+            if add_pipe:
+                score += 1
+                # can add this line to give more reward for passing through a pipe (not required)
+                pipes.append(Pipe(WIDTH))
+            
+            if (bee.y > 650):
+                bees.pop(bees.index(bee))
                 break
 
+        if (len(bees) == 0):
+            break
 
-            if pipe.x + pipe.UPPER_PIPE.get_width() < 0:
-                pipes_to_remove.append(pipe)
+        
 
-            if not pipe.passed and pipe.x < bee.x:
-                pipe.passed = True
-                add_pipe = True
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                run = False
+                pygame.quit()
+                quit()
+                break
+            if event.type == pygame.KEYDOWN:
+                if pygame.K_SPACE:
+                    bees[0].flap()
 
-        if add_pipe:
-            score += 1
-            # can add this line to give more reward for passing through a pipe (not required)
-            pipes.append(Pipe(WIDTH))
+        draw_window(WINDOW, bees, ground, pipes, score)
 
-    if (len(bees) == 0):
-        break
+play_button = button_print("PLAY", (255,47,154), WIDTH/2, HEIGHT/2, 0.5)
+on = False
+while(1):
+    
+    WINDOW.blit(sky_img, (0,0))
+    WINDOW.blit(ground_img, (700,0))
+    hb_label = FONT.render("HAPPY BEE!",1,(255,173,47))
+    WINDOW.blit(hb_label, (WIDTH/2 - 100, HEIGHT/4))
 
+
+    mouse = pygame.mouse.get_pos()
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
-            run = False
             pygame.quit()
             quit()
-            break
-        if event.type == pygame.KEYDOWN:
-            if pygame.K_SPACE:
-                bees[0].flap()
-
-    draw_window(WINDOW, bees, ground, pipes, score)
+        if play_button[0] < mouse[0] < play_button[0] + play_button[2] and \
+            play_button[1] < mouse[1] < play_button[1] + play_button[3]:
+            play_button = button_print("PLAY", (100,100,100),  WIDTH/2, HEIGHT/2, 0.5)
+            on = True
+        else:		
+            play_button = button_print("PLAY", (255,47,154),  WIDTH/2, HEIGHT/2, 0.5)
+            on = False
+        if pygame.mouse.get_pressed()[0]:
+            if play_button[0] < mouse[0] < play_button[0] + play_button[2] and \
+                play_button[1] < mouse[1] < play_button[1] + play_button[3]:
+                    run()
+                    break;
+    else:
+        if on:
+            play_button = button_print("PLAY", (100,100,100), WIDTH/2, HEIGHT/2, 0.5)
+        else:
+            play_button = button_print("PLAY", (255,47,154),  WIDTH/2, HEIGHT/2, 0.5)
+    pygame.display.update()
 
 
 
