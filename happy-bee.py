@@ -42,7 +42,7 @@ def button_print(text, back_color, w, h, scale = 1):
     pygame.draw.rect(WINDOW, back_color, dim)
 
     label = font.render(text, 1, color)
-    WINDOW.blit(label, (w - 0.32 * button_width, h - 0.2 * button_height))
+    WINDOW.blit(label, (w - 0.5 * label.get_width(), h - 0.2 * button_height))
     pygame.display.update()
     return dim
 
