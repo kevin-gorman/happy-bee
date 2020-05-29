@@ -25,6 +25,8 @@ bee_img = pygame.transform.scale(pygame.image.load(os.path.join("images","bee.pn
 
 gen = 0
 
+LAST_HEIGHT = 250
+
 
 
 
@@ -69,7 +71,7 @@ def draw_window_train(win, bees, ground, pipes, score, gen, on_stop):
     score_label = FONT.render("Score: " + str(score),1,(255,255,255))
     win.blit(score_label, (WIDTH - score_label.get_width() - 15, 10))
     gen_label = FONT.render("Gen: " + str(gen),1,(255,255,255))
-    win.blit(score_label, (WIDTH - gen_label.get_width() - 15, 50))
+    win.blit(gen_label, (WIDTH - gen_label.get_width() - 15, 50))
     pygame.display.update()
     if on_stop:
         button_print("STOP", (100,100,100), 75, 40, 0.5)
@@ -197,7 +199,14 @@ class Pipe():
         set the height of the pipe, from the top of the screen
         :return: None
         """
-        self.height = random.randrange(50, 450)
+        global LAST_HEIGHT
+        self.height = LAST_HEIGHT + random.randrange(-250, 250)
+        if self.height < 75:
+            self.height = random.randrange(75, 125)
+        if self.height > 425:
+            self.height = random.randrange(375, 425)
+        LAST_HEIGHT = self.height
+        #self.height = random.randrange(75, 425)
         self.top = self.height - self.UPPER_PIPE.get_height()
         self.bottom = self.height + self.GAP
 
@@ -289,7 +298,7 @@ def play():
     stop_button = button_print("STOP", (255,47,154), 75, 40, 0.5)
     on_stop = False
     while(1):
-        
+        pygame.time.wait(10)
         clock.tick(20)
         ground.move()
         for bee in bees:
@@ -438,7 +447,7 @@ def eval_genomes(genomes, config):
             for genome in genomes_dynamic:
                 genome.fitness += 5
         
-
+        mouse = pygame.mouse.get_pos()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -452,6 +461,8 @@ def eval_genomes(genomes, config):
             if pygame.mouse.get_pressed()[0]:
                 if stop_button[0] < mouse[0] < stop_button[0] + stop_button[2] and \
                     stop_button[1] < mouse[1] < stop_button[1] + stop_button[3]:
+                        if len(genomes_dynamic) > 0:
+                            genomes_dynamic[0].fitness = 1001
                         return;
 
         draw_window_train(WINDOW, bees, ground, pipes, score, gen, on_stop)
@@ -459,6 +470,7 @@ def eval_genomes(genomes, config):
 def watch(pickle_name):
     file = open(pickle_name, 'rb')
     net = pickle.load(file)
+    file.close()
 
     bee = Bee(230,350, bee_img)
     ground = Ground(700, ground_img)
@@ -472,9 +484,15 @@ def watch(pickle_name):
     while(run):
 
         pipe_num = 0 # Which set of pipes the bees should look at 
-        if len(pipes) > 1 and bee.x > pipes[0].x + pipes[0].UPPER_PIPE.get_width()/2 - 50: 
+        if len(pipes) > 1 and bee.x > pipes[0].x + pipes[0].UPPER_PIPE.get_width()/2 + 25: 
             pipe_num = 1  # If the first pipe is passed, the bees should look at the second
         
+        pygame.draw.line(WINDOW,(255, 0, 0),(bee.x + 40,bee.y + 25),
+            (pipes[pipe_num].x + pipes[0].UPPER_PIPE.get_width()/2, pipes[pipe_num].height), 2)
+        pygame.draw.line(WINDOW,(255, 0, 0),(bee.x + 40,bee.y + 25),
+            (pipes[pipe_num].x + pipes[0].UPPER_PIPE.get_width()/2, pipes[pipe_num].bottom), 2)
+        pygame.display.update()
+
         action = net.activate((bee.y, bee.y - pipes[pipe_num].height, bee.y - pipes[pipe_num].bottom))
 
         if action[0] > 0.75:  # used sigmoid, so try .75 as threashold for flap or not
@@ -483,7 +501,6 @@ def watch(pickle_name):
 
         clock.tick(20)
         ground.move()
-        bee.move()
 
         pipes_to_remove = []
         add_pipe = False
@@ -495,12 +512,15 @@ def watch(pickle_name):
                 break
 
 
-            if pipe.x + pipe.UPPER_PIPE.get_width() < 0:
+            if pipe.x + pipe.UPPER_PIPE.get_width() - 150 < 0:
                 pipes_to_remove.append(pipe)
 
             if not pipe.passed and (pipe.x + pipe.UPPER_PIPE.get_width()/2 - 50) < bee.x:
                 pipe.passed = True
                 add_pipe = True
+
+        for pipe in pipes_to_remove:
+            pipes.remove(pipe)
 
         if add_pipe:
             score += 1
@@ -510,6 +530,7 @@ def watch(pickle_name):
         if (bee.y > 650 or bee.y < 50):
             break
 
+        mouse = pygame.mouse.get_pos()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
