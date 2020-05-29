@@ -3,10 +3,10 @@ import random
 import os
 import time
 import neat
-#import visualize
+import visualize
 import pickle
 
-WIDTH = 550
+WIDTH = 500
 HEIGHT = 800
 FLOOR = 700
 
@@ -17,8 +17,8 @@ FONT = pygame.font.SysFont("Avenir", 50)
 WINDOW = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Happy Bee!")
 
-sky_img = pygame.transform.scale(pygame.image.load(os.path.join("images","sky.png")).convert_alpha(), (550, 700))
-ground_img = pygame.transform.scale(pygame.image.load(os.path.join("images","ground.png")).convert_alpha(),(550, 100))
+sky_img = pygame.transform.scale(pygame.image.load(os.path.join("images","sky.png")).convert_alpha(), (500, 700))
+ground_img = pygame.transform.scale(pygame.image.load(os.path.join("images","ground.png")).convert_alpha(),(500, 100))
 pipe_img = pygame.transform.scale(pygame.image.load(os.path.join("images","pipe.png")).convert_alpha(), (400, 450))
 bee_img = pygame.transform.scale(pygame.image.load(os.path.join("images","bee.png")).convert_alpha(), (50, 50))
 
@@ -250,7 +250,7 @@ class Ground:
         win.blit(self.img, (self.x1, self.y))
         win.blit(self.img, (self.x2, self.y))
 
-def run():
+def play():
     bees = [Bee(230,350, bee_img)]
     ground = Ground(700, ground_img)
     pipes = [Pipe(700)]
@@ -276,14 +276,14 @@ def run():
                 if pipe.x + pipe.UPPER_PIPE.get_width() < 0:
                     pipes_to_remove.append(pipe)
 
-                if not pipe.passed and pipe.x < bee.x:
+                if not pipe.passed and (pipe.x + pipe.UPPER_PIPE.get_width()/2 - 50) < bee.x:
                     pipe.passed = True
                     add_pipe = True
 
             if add_pipe:
                 score += 1
                 # can add this line to give more reward for passing through a pipe (not required)
-                pipes.append(Pipe(WIDTH))
+                pipes.append(Pipe(WIDTH - 150))
             
             if (bee.y > 650):
                 bees.pop(bees.index(bee))
@@ -296,7 +296,6 @@ def run():
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                run = False
                 pygame.quit()
                 quit()
                 break
@@ -306,12 +305,134 @@ def run():
 
         draw_window(WINDOW, bees, ground, pipes, score)
 
-play_button = button_print("PLAY", (255,47,154), WIDTH/2, HEIGHT/2, 0.5)
-on = False
+def eval_genomes(genomes, config):
+    """
+    take a genome and run the bees in the simulation
+    until they are all dead, then evaluate their 
+    fitness based on how far they got
+    """
+    global gen
+    gen += 1
+
+    bees = [] # a list of bees for the current generation
+    neural_nets = [] # a list of each bee's neural net
+    #genomes_dynamic = [] # a changing list of the genomes
+
+
+    for genome_id, genome in genomes:
+        genome.fitness = 0 
+        net = neat.nn.FeedForwardNetwork.create(genome, config)
+        neural_nets.append(net)
+        bees.append(Bee(230,350, bee_img))
+
+
+    ground = Ground(700, ground_img)
+    pipes = [Pipe(700)]
+    clock = pygame.time.Clock()
+    score = 0
+
+
+    while(1):
+        
+        clock.tick(20)
+        ground.move()
+
+        pipe_num = 0 # Which set of pipes the bees should look at 
+        if len(pipes) > 1 and bees[0].x > pipes[0].x + pipes[0].UPPER_PIPE.get_width()/2 - 50: 
+                pipe_ind = 1  # If the first pipe is passed, the bees should look at the second
+
+        for i, bee in enumerate(bees):
+            genomes[i][1].fitness += 0.1
+            action = neural_nets[i].activate((bee.y, abs(bee.y - pipes[pipe_num].height), abs(bee.y - pipes[pipe_num].bottom)))
+
+            if action[0] > 0.7:  # used sigmoid, so try .7 as threashold for flap or not
+                bee.flap()
+            bee.move()
+
+            pipes_to_remove = []
+            add_pipe = False
+            for pipe in pipes:
+                pipe.move()
+                # check for collision
+                if pipe.collide(bee, WINDOW):
+                    genomes.pop(i)
+                    neural_nets.pop(i)
+                    bees.pop(i)
+                    break
+
+
+                if pipe.x + pipe.UPPER_PIPE.get_width() < 0:
+                    pipes_to_remove.append(pipe)
+
+                if not pipe.passed and (pipe.x + pipe.UPPER_PIPE.get_width()/2 - 50) < bee.x:
+                    pipe.passed = True
+                    add_pipe = True
+
+            if add_pipe:
+                score += 1
+                # can add this line to give more reward for passing through a pipe (not required)
+                pipes.append(Pipe(WIDTH - 150))
+            
+            for genome in genomes:
+                genome[1].fitness += 5
+            
+            if (bee.y > 650):
+                genomes.pop(i)
+                neural_nets.pop(i)
+                bees.pop(i)
+                break
+
+        if (len(bees) == 0):
+            break
+
+        
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                quit()
+                break
+
+        draw_window(WINDOW, bees, ground, pipes, score)
+
+
+def run(config_file):
+    """
+    runs the NEAT algorithm to train a neural network to play flappy bird.
+    :param config_file: location of config file
+    :return: None
+    """
+    config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction,
+                         neat.DefaultSpeciesSet, neat.DefaultStagnation,
+                         config_file)
+
+    # Create the population, which is the top-level object for a NEAT run.
+    p = neat.Population(config)
+
+    # Add a stdout reporter to show progress in the terminal.
+    p.add_reporter(neat.StdOutReporter(True))
+    stats = neat.StatisticsReporter()
+    p.add_reporter(stats)
+    #p.add_reporter(neat.Checkpointer(5))
+
+    # Run for up to 50 generations.
+    winner = p.run(eval_genomes, 50)
+
+    # show final stats
+    print('\nBest genome:\n{!s}'.format(winner))
+
+
+
+
+play_button = button_print("PLAY", (255,47,154), WIDTH/2, HEIGHT/2 - 50, 0.5)
+train_button = button_print("TRAIN", (155,75,160), WIDTH/2, HEIGHT/2 + 25, 0.5)
+
+on_play = False
+on_train = False
 while(1):
     
     WINDOW.blit(sky_img, (0,0))
-    WINDOW.blit(ground_img, (700,0))
+    WINDOW.blit(ground_img, (0,700))
     hb_label = FONT.render("HAPPY BEE!",1,(255,173,47))
     WINDOW.blit(hb_label, (WIDTH/2 - 100, HEIGHT/4))
 
@@ -323,23 +444,44 @@ while(1):
             quit()
         if play_button[0] < mouse[0] < play_button[0] + play_button[2] and \
             play_button[1] < mouse[1] < play_button[1] + play_button[3]:
-            play_button = button_print("PLAY", (100,100,100),  WIDTH/2, HEIGHT/2, 0.5)
-            on = True
+            play_button = button_print("PLAY", (100,100,100),  WIDTH/2, HEIGHT/2 - 50, 0.5)
+            on_play = True
         else:		
-            play_button = button_print("PLAY", (255,47,154),  WIDTH/2, HEIGHT/2, 0.5)
-            on = False
+            play_button = button_print("PLAY", (255,47,154),  WIDTH/2, HEIGHT/2 - 50, 0.5)
+            on_play = False
+        if train_button[0] < mouse[0] < train_button[0] + train_button[2] and \
+            train_button[1] < mouse[1] < train_button[1] + train_button[3]:
+            train_button = button_print("TRAIN", (100,100,100),  WIDTH/2, HEIGHT/2 + 25, 0.5)
+            on_train = True
+        else:		
+            train_button = button_print("TRAIN", (155,75,160),  WIDTH/2, HEIGHT/2 + 25, 0.5)
+            on_train = False
         if pygame.mouse.get_pressed()[0]:
             if play_button[0] < mouse[0] < play_button[0] + play_button[2] and \
                 play_button[1] < mouse[1] < play_button[1] + play_button[3]:
-                    run()
+                    play()
+                    break;
+            elif train_button[0] < mouse[0] < train_button[0] + train_button[2] and \
+                train_button[1] < mouse[1] < train_button[1] + train_button[3]:
+                    run('happy-bee-config.ini')
                     break;
     else:
-        if on:
-            play_button = button_print("PLAY", (100,100,100), WIDTH/2, HEIGHT/2, 0.5)
+        if on_play:
+            play_button = button_print("PLAY", (100,100,100), WIDTH/2, HEIGHT/2 - 50, 0.5)
         else:
-            play_button = button_print("PLAY", (255,47,154),  WIDTH/2, HEIGHT/2, 0.5)
+            play_button = button_print("PLAY", (255,47,154),  WIDTH/2, HEIGHT/2 - 50, 0.5)
+        if on_train:
+            train_button = button_print("TRAIN", (100,100,100), WIDTH/2, HEIGHT/2 + 25, 0.5)
+        else:
+            train_button = button_print("TRAIN", (155,75,160),  WIDTH/2, HEIGHT/2 + 25, 0.5)
     pygame.display.update()
 
 
 
-        
+if __name__ == '__main__':
+    # Determine path to configuration file. This path manipulation is
+    # here so that the script will run successfully regardless of the
+    # current working directory.
+    local_dir = os.path.dirname(__file__)
+    config_path = os.path.join(local_dir, 'happy-bee-config.ini')
+    run(config_path)
